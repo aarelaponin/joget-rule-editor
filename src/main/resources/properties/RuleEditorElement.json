@@ -1,0 +1,93 @@
+[
+    {
+        "title": "Configure Rule Editor",
+        "properties": [
+            {
+                "name": "id",
+                "label": "Field ID",
+                "type": "textfield",
+                "required": "true",
+                "value": "eligibilityScript"
+            },
+            {
+                "name": "label",
+                "label": "Label",
+                "type": "textfield",
+                "value": "Eligibility Rules"
+            },
+            {
+                "name": "scopeCode",
+                "label": "Field Scope Code",
+                "description": "The field scope to use for validation and autocomplete",
+                "type": "textfield",
+                "value": "FARMER_ELIGIBILITY"
+            },
+            {
+                "name": "contextType",
+                "label": "Context Type",
+                "description": "Type of rules (ELIGIBILITY, DERIVATION, SCORING)",
+                "type": "selectbox",
+                "options": [
+                    {"value": "ELIGIBILITY", "label": "Eligibility Rules"},
+                    {"value": "DERIVATION", "label": "Derivation Rules"},
+                    {"value": "SCORING", "label": "Scoring Rules"},
+                    {"value": "VALIDATION", "label": "Validation Rules"}
+                ],
+                "value": "ELIGIBILITY"
+            },
+            {
+                "name": "contextCode",
+                "label": "Context Code",
+                "description": "Context identifier (e.g., program code)",
+                "type": "textfield",
+                "value": ""
+            },
+            {
+                "name": "height",
+                "label": "Editor Height",
+                "description": "Height of the editor. Use 'auto' for auto-sizing, or specify a value like '300px' or '50vh'",
+                "type": "textfield",
+                "value": "auto"
+            },
+            {
+                "name": "showDictionary",
+                "label": "Show Field Dictionary",
+                "description": "Show the field dictionary panel for autocomplete",
+                "type": "checkbox",
+                "options": [
+                    {"value": "true", "label": ""}
+                ],
+                "value": "true"
+            },
+            {
+                "name": "showSaveButton",
+                "label": "Show Save Button",
+                "description": "Show a separate save button in the editor toolbar",
+                "type": "checkbox",
+                "options": [
+                    {"value": "true", "label": ""}
+                ],
+                "value": ""
+            }
+        ]
+    },
+    {
+        "title": "API Authentication",
+        "properties": [
+            {
+                "name": "apiId",
+                "label": "API ID",
+                "description": "API ID for Rules service authentication (from API Builder)",
+                "type": "textfield",
+                "value": ""
+            },
+            {
+                "name": "apiKey",
+                "label": "API Key",
+                "description": "API Key for Rules service authentication",
+                "type": "password",
+                "value": ""
+            }
+        ]
+    }
+]
