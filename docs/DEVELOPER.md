@@ -30,10 +30,10 @@ A comprehensive guide for extending, customizing, and integrating the Rules Scri
 │           ▼                       ▼                                     │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │                        Parser Layer (Java)                        │  │
-│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐      │  │
-│  │  │  Lexer   │──▶│  Parser  │──▶│ Validator│──▶│ Compiler │      │  │
-│  │  │ (Tokens) │   │ (AST)    │   │ (Fields) │   │ (SQL)    │      │  │
-│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘      │  │
+│  │  ┌────────────────────┐   ┌──────────┐   ┌──────────┐           │  │
+│  │  │  rules-grammar     │──▶│ Adapters │──▶│ Compiler │           │  │
+│  │  │  (ANTLR Parser)    │   │ (Model)  │   │ (SQL)    │           │  │
+│  │  └────────────────────┘   └──────────┘   └──────────┘           │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -45,7 +45,8 @@ A comprehensive guide for extending, customizing, and integrating the Rules Scri
 |-------|----------|---------|
 | **UI Layer** | `resources/static/` | CodeMirror editor with Rules Script syntax highlighting |
 | **API Layer** | `lib/RulesServiceProvider.java` | REST endpoints for validation, compilation, CRUD |
-| **Parser Layer** | `parser/` | Lexer, Parser, Validator - core language processing |
+| **Parser Layer** | `parser/` + `rules-grammar` | ANTLR-based parsing via embedded library |
+| **Adapter Layer** | `adapter/` | Converts ANTLR model to legacy model classes |
 | **Compiler Layer** | `compiler/` | Transforms rules to SQL for database queries |
 | **Model Layer** | `model/` | Data structures (Rule, Condition, etc.) |
 | **Service Layer** | `service/` | Field registry, ruleset persistence |
@@ -55,32 +56,36 @@ A comprehensive guide for extending, customizing, and integrating the Rules Scri
 ```
 src/main/java/global/govstack/ruleeditor/
 ├── Activator.java                 # OSGi bundle activator
+├── adapter/
+│   ├── ConditionAdapter.java      # Converts ANTLR Condition → legacy Condition
+│   ├── RuleAdapter.java           # Converts ANTLR Rule → legacy Rule
+│   └── ValueAdapter.java          # Converts ANTLR Value → Object
 ├── parser/
-│   ├── Token.java                 # Token type enum (keywords, operators)
-│   ├── TokenInstance.java         # Token with value and position
-│   ├── RuleScriptLexer.java            # Tokenizer (text → tokens)
-│   └── RuleScriptParser.java           # Parser (tokens → AST)
+│   └── RuleScriptParser.java      # Facade using rules-grammar + adapters
 ├── compiler/
-│   ├── RuleScriptCompiler.java         # AST → SQL transformation
-│   ├── FieldMapping.java         # Field-to-column mapping
-│   └── CompiledRuleset.java      # Compilation output
+│   ├── RuleScriptCompiler.java    # AST → SQL transformation
+│   ├── FieldMapping.java          # Field-to-column mapping
+│   └── CompiledRuleset.java       # Compilation output
 ├── model/
-│   ├── Rule.java             # Single rule model
-│   ├── Condition.java        # Condition tree node
-│   └── ValidationResult.java     # Parse/validation result
+│   ├── Rule.java                  # Single rule model (legacy)
+│   ├── Condition.java             # Condition tree node (legacy)
+│   └── ValidationResult.java      # Parse/validation result
 ├── service/
-│   ├── FieldRegistryService.java # Available fields for autocomplete
-│   └── RulesetService.java       # Ruleset persistence
+│   ├── FieldRegistryService.java  # Available fields for autocomplete
+│   └── RulesetService.java        # Ruleset persistence
 └── lib/
     └── RulesServiceProvider.java  # REST API endpoints
 
 src/main/resources/
 ├── static/
-│   ├── jre-mode.js              # CodeMirror syntax mode
-│   ├── jre-editor.js            # Editor component
-│   └── jre-editor.css           # Editor styling
+│   ├── jre-mode.js               # CodeMirror syntax mode
+│   ├── jre-editor.js             # Editor component
+│   └── jre-editor.css            # Editor styling
 └── templates/
-    └── RuleEditorElement.ftl     # Joget form element template
+    └── RuleEditorElement.ftl      # Joget form element template
+
+# Embedded dependency (inside JAR):
+rules-grammar-1.0.0-SNAPSHOT.jar   # ANTLR-based parser library
 ```
 
 ---
@@ -89,7 +94,7 @@ src/main/resources/
 
 ### Prerequisites
 
-- Java 11+
+- Java 17+
 - Maven 3.6+
 - Joget DX 8.1 (for deployment)
 
@@ -143,7 +148,7 @@ public class ParserTest {
 
 ## Extending the Grammar
 
-The grammar is implemented as a hand-written **recursive descent parser** (not ANTLR), which makes it straightforward to extend.
+The grammar is implemented using **ANTLR 4** in the separate [rules-grammar](../rules-grammar) library. To extend the grammar, you need to modify the grammar file there and rebuild both projects.
 
 ### Current Grammar (BNF)
 

@@ -3,7 +3,7 @@
 A Joget plugin for validating, compiling, and editing Rules Script definitions. Rules Script is a domain-specific language designed for defining eligibility rules in social protection programs, subsidy management, and similar use cases.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Java Version](https://img.shields.io/badge/Java-11%2B-blue)](https://openjdk.java.net/)
+[![Java Version](https://img.shields.io/badge/Java-17%2B-blue)](https://openjdk.java.net/)
 [![Joget Version](https://img.shields.io/badge/Joget-8.1-green)](https://www.joget.org/)
 
 ## Features
@@ -20,7 +20,7 @@ A Joget plugin for validating, compiling, and editing Rules Script definitions. 
 
 ### Prerequisites
 
-- Java 11+
+- Java 17+
 - Maven 3.6+
 - (Optional) Joget DX 8.1 for deployment
 
@@ -151,7 +151,8 @@ Comprehensive documentation is available in the `/docs` folder:
 ```
 joget-rule-editor/
 ├── src/main/java/global/govstack/ruleeditor/
-│   ├── parser/          # Lexer, Parser (grammar implementation)
+│   ├── adapter/         # ANTLR model adapters (converts new→old model)
+│   ├── parser/          # RuleScriptParser (uses rules-grammar)
 │   ├── compiler/        # SQL compilation
 │   ├── model/           # Data models (Rule, Condition)
 │   ├── service/         # Field registry, ruleset persistence
@@ -165,24 +166,34 @@ joget-rule-editor/
 └── examples/            # HTML integration examples
 ```
 
+### Dependencies
+
+This plugin embeds the [rules-grammar](../rules-grammar) library which provides an ANTLR-based parser for the Rules Script DSL.
+
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Rule Editor (UI)                                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐│
-│  │ [Validate] [Save]  │ CodeMirror with Rules Script syntax highlighting        ││
+│  │ [Validate] [Save]  │ CodeMirror with Rules Script syntax highlighting ││
 │  └─────────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────────┘
                            │ REST API
                            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Joget Rule Editor                                                       │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐             │
-│  │  Lexer   │──▶│  Parser  │──▶│ Validator│──▶│ Compiler │──▶ SQL      │
-│  └──────────┘   └──────────┘   └──────────┘   └──────────┘             │
+│  ┌────────────────────────────┐   ┌──────────┐   ┌──────────┐          │
+│  │  rules-grammar (ANTLR)    │──▶│ Adapters │──▶│ Compiler │──▶ SQL   │
+│  │  Lexer → Parser → AST     │   │ (new→old)│   │          │          │
+│  └────────────────────────────┘   └──────────┘   └──────────┘          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+The parser pipeline uses:
+1. **rules-grammar** - ANTLR-generated lexer/parser producing immutable AST
+2. **Adapters** - Convert new model records to old mutable model classes
+3. **Compiler** - Transform rules to SQL queries
 
 ## Use Cases
 

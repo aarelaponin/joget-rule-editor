@@ -25,7 +25,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ### Prerequisites
 
-- Java 11 or higher
+- Java 17 or higher
 - Maven 3.6 or higher
 - Git
 - (Optional) Joget DX 8.1 for deployment testing
@@ -68,9 +68,10 @@ mvn test
 ```
 joget-rule-editor/
 ├── src/main/java/global/govstack/ruleeditor/
-│   ├── parser/       # Lexer, Parser, Token definitions
+│   ├── adapter/      # Model adapters (ANTLR → legacy)
+│   ├── parser/       # RuleScriptParser facade
 │   ├── compiler/     # SQL compilation
-│   ├── model/        # Data models
+│   ├── model/        # Legacy data models
 │   ├── service/      # Business services
 │   ├── lib/          # API endpoints
 │   └── element/      # Joget form elements
@@ -80,6 +81,9 @@ joget-rule-editor/
 │   └── properties/   # Plugin configurations
 ├── src/test/java/    # Unit tests
 └── docs/             # Documentation
+
+# Related project (embedded as dependency):
+../rules-grammar/     # ANTLR-based parser library
 ```
 
 ---

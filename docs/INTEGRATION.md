@@ -42,13 +42,15 @@ This guide covers integrating the Joget Rule Editor with different systems and p
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │                     Joget Rule Editor                            │  │
 │  │  ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐          │  │
-│  │  │ Editor  │   │  REST   │   │  Java   │   │   SQL   │          │  │
-│  │  │   UI    │   │  API    │   │  Lib    │   │  Output │          │  │
+│  │  │ Editor  │   │  REST   │   │  ANTLR  │   │   SQL   │          │  │
+│  │  │   UI    │   │  API    │   │  Parser │   │  Output │          │  │
 │  │  └─────────┘   └─────────┘   └─────────┘   └─────────┘          │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Note**: The parser uses ANTLR 4 for robust grammar parsing. Java 17+ is required.
 
 ---
 

@@ -1,17 +1,18 @@
 # Extending the Rules Script Grammar
 
-This guide explains how to extend the Rules Script language with new keywords, operators, functions, and rule types. The parser uses a **hand-written recursive descent approach**, making extensions straightforward.
+This guide explains how to extend the Rules Script language with new keywords, operators, functions, and rule types. The parser uses **ANTLR 4** for grammar definition, with an adapter layer to convert to the legacy model.
 
 ## Table of Contents
 
 1. [Understanding the Parser Pipeline](#understanding-the-parser-pipeline)
-2. [Adding a New Keyword](#adding-a-new-keyword)
-3. [Adding a New Operator](#adding-a-new-operator)
-4. [Adding a New Function](#adding-a-new-function)
-5. [Adding a New Rule Type](#adding-a-new-rule-type)
-6. [Adding a New Rule Clause](#adding-a-new-rule-clause)
-7. [Use Case: Subsidy Program Rules](#use-case-subsidy-program-rules)
-8. [Updating the UI](#updating-the-ui)
+2. [Project Structure](#project-structure)
+3. [Adding a New Keyword](#adding-a-new-keyword)
+4. [Adding a New Operator](#adding-a-new-operator)
+5. [Adding a New Function](#adding-a-new-function)
+6. [Adding a New Rule Type](#adding-a-new-rule-type)
+7. [Adding a New Rule Clause](#adding-a-new-rule-clause)
+8. [Updating the Adapters](#updating-the-adapters)
+9. [Updating the UI](#updating-the-ui)
 
 ---
 
@@ -21,38 +22,81 @@ This guide explains how to extend the Rules Script language with new keywords, o
 Rules Script (text)
        │
        ▼
-┌──────────────┐
-│  RuleScriptLexer   │  Tokenization: text → tokens
-│  Token.java  │  Defines all token types
-└──────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  rules-grammar library (ANTLR-based)                          │
+│  ┌────────────────┐   ┌────────────────┐   ┌──────────────┐  │
+│  │ RulesScriptLexer│──▶│RulesScriptParser│──▶│ AST Builder  │  │
+│  │ (Generated)     │   │ (Generated)     │   │ (Visitor)    │  │
+│  └────────────────┘   └────────────────┘   └──────────────┘  │
+│                                                    │          │
+│                              Script, Rule, Condition records  │
+└──────────────────────────────────────────────────────────────┘
        │
        ▼
-┌──────────────┐
-│  RuleScriptParser  │  Parsing: tokens → AST (Abstract Syntax Tree)
-│              │  Implements grammar rules
-└──────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  joget-rule-editor (Adapter Layer)                            │
+│  ┌────────────────┐   ┌────────────────┐   ┌──────────────┐  │
+│  │ RuleAdapter    │   │ConditionAdapter│   │ ValueAdapter │  │
+│  │ (new→old)      │   │ (new→old)      │   │ (new→old)    │  │
+│  └────────────────┘   └────────────────┘   └──────────────┘  │
+│                              │                                │
+│                     Legacy Rule, Condition classes            │
+└──────────────────────────────────────────────────────────────┘
        │
        ▼
 ┌──────────────────┐
-│  Condition   │  Model: Condition tree structure
-│  Rule        │  Model: Rule structure
+│  RuleScriptCompiler   │
+│  (SQL generation)│
 └──────────────────┘
-       │
-       ▼
-┌──────────────┐
-│  RuleScriptCompiler│  Compilation: AST → SQL
-└──────────────┘
 ```
 
 ### Files to Modify for Grammar Changes
 
-| Change Type | Token.java | RuleScriptLexer.java | RuleScriptParser.java | Condition.java | RuleScriptCompiler.java | UI Files |
-|-------------|:----------:|:--------------:|:---------------:|:------------------:|:-----------------:|:--------:|
-| New Keyword | ✓ | ✓ | ✓ | | | ✓ |
-| New Operator | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| New Function | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| New Rule Type | ✓ | ✓ | ✓ | | ✓ | ✓ |
-| New Rule Clause | ✓ | ✓ | ✓ | | | ✓ |
+| Change Type | rules-grammar | joget-rule-editor | UI Files |
+|-------------|:-------------:|:-----------------:|:--------:|
+| New Keyword | `RulesScript.g4`, Model classes, AST Builder | Adapters (if needed) | `jre-mode.js` |
+| New Operator | `RulesScript.g4`, `ComparisonOperator.java` | `ConditionAdapter.java`, `Condition.java` | `jre-mode.js` |
+| New Function | `RulesScript.g4`, `Condition.java` subclasses | `ConditionAdapter.java`, `Condition.java` | `jre-mode.js` |
+| New Rule Type | `RulesScript.g4`, `RuleType.java` | `RuleAdapter.java`, `Rule.java` | `jre-mode.js` |
+| New Rule Clause | `RulesScript.g4`, `Rule.java` | `RuleAdapter.java` | `jre-mode.js` |
+
+---
+
+## Project Structure
+
+The grammar is split across two projects:
+
+```
+gs-plugins/
+├── rules-grammar/                    # ANTLR grammar library
+│   ├── src/main/antlr4/
+│   │   └── global/govstack/rules/grammar/
+│   │       └── RulesScript.g4        # ANTLR grammar definition
+│   └── src/main/java/
+│       └── global/govstack/rules/grammar/
+│           ├── RulesScript.java      # Facade API
+│           ├── ParseResult.java      # Parse result with errors
+│           ├── RulesScriptAstBuilder.java  # Visitor implementation
+│           └── model/
+│               ├── Script.java       # Immutable AST root
+│               ├── Rule.java         # Immutable rule record
+│               ├── Condition.java    # Sealed interface
+│               ├── Value.java        # Sealed interface
+│               └── ...
+│
+└── joget-rule-editor/                # Joget plugin
+    └── src/main/java/
+        └── global/govstack/ruleeditor/
+            ├── adapter/              # Model adapters
+            │   ├── ConditionAdapter.java
+            │   ├── RuleAdapter.java
+            │   └── ValueAdapter.java
+            ├── parser/
+            │   └── RuleScriptParser.java  # Facade
+            └── model/                # Legacy model
+                ├── Condition.java
+                └── Rule.java
+```
 
 ---
 
@@ -60,85 +104,109 @@ Rules Script (text)
 
 **Example**: Add `DEPENDS ON "RuleName"` clause for rule dependencies.
 
-### Step 1: Add Token Type (Token.java)
+### Step 1: Update Grammar (rules-grammar/RulesScript.g4)
 
-```java
-public enum Token {
-    // ... existing tokens ...
+```antlr
+// Add tokens
+DEPENDS : D E P E N D S ;
 
-    // === New Keywords ===
-    DEPENDS,        // DEPENDS ON "rule-name"
-    ON,             // (part of DEPENDS ON)
-
-    // ... rest of enum ...
-}
+// Update rule body
+ruleBody
+    : (TYPE COLON ruleType)?
+      (CATEGORY COLON identifier)?
+      (MANDATORY COLON boolValue)?
+      (ORDER COLON NUMBER)?
+      (DEPENDS ON STRING)?           // New clause
+      (WHEN condition)?
+      (scoreClause)?
+      (PASS_MESSAGE COLON STRING)?
+      (FAIL_MESSAGE COLON STRING)?
+    ;
 ```
 
-### Step 2: Register Keyword (RuleScriptLexer.java)
-
-Add to the `KEYWORDS` map:
+### Step 2: Update Model (rules-grammar)
 
 ```java
-static {
-    // ... existing keywords ...
-
-    // New keywords
-    KEYWORDS.put("DEPENDS", Token.DEPENDS);
-    KEYWORDS.put("ON", Token.ON);
-}
+// In Rule.java record
+public record Rule(
+    String name,
+    RuleType type,
+    String category,
+    boolean isMandatory,
+    Integer order,
+    List<String> dependencies,       // New field
+    Condition condition,
+    Integer score,
+    Integer weight,
+    String passMessage,
+    String failMessage
+) { }
 ```
 
-### Step 3: Parse the Clause (RuleScriptParser.java)
-
-In the `parseRule()` method, add handling for the new clause:
+### Step 3: Update AST Builder (rules-grammar)
 
 ```java
-private Rule parseRule() throws ParseException {
+// In RulesScriptAstBuilder.java
+@Override
+public Object visitRuleBody(RulesScriptParser.RuleBodyContext ctx) {
     // ... existing code ...
 
-    while (!isAtEnd() && !check(Token.RULE)) {
-        // ... existing clause handling ...
+    List<String> dependencies = new ArrayList<>();
+    if (ctx.DEPENDS() != null) {
+        String depName = unquote(ctx.STRING(dependsIndex).getText());
+        dependencies.add(depName);
+    }
 
-        } else if (check(Token.DEPENDS)) {
-            advance();  // consume DEPENDS
-            consume(Token.ON, "Expected 'ON' after DEPENDS");
-            TokenInstance depToken = consume(Token.STRING, "Expected rule name after DEPENDS ON");
-            rule.addDependency(depToken.getStringValue());
+    return new Rule(name, type, category, mandatory, order,
+                   dependencies, condition, score, weight, passMsg, failMsg);
+}
+```
 
-        } else if (check(Token.NEWLINE)) {
-            advance();
-        } else {
-            break;
+### Step 4: Rebuild rules-grammar
+
+```bash
+cd rules-grammar
+mvn clean install
+```
+
+### Step 5: Update Adapter (joget-rule-editor)
+
+```java
+// In RuleAdapter.java
+public static Rule toOldModel(global.govstack.rules.grammar.model.Rule newRule) {
+    Rule oldRule = new Rule();
+    // ... existing mappings ...
+
+    if (newRule.dependencies() != null) {
+        for (String dep : newRule.dependencies()) {
+            oldRule.addDependency(dep);
         }
     }
 
-    return rule;
+    return oldRule;
 }
 ```
 
-### Step 4: Update Model (Rule.java)
+### Step 6: Update Legacy Model (joget-rule-editor)
 
 ```java
-public class Rule {
-    // ... existing fields ...
+// In model/Rule.java
+private List<String> dependencies = new ArrayList<>();
 
-    private List<String> dependencies = new ArrayList<>();
+public void addDependency(String ruleName) {
+    dependencies.add(ruleName);
+}
 
-    public void addDependency(String ruleName) {
-        dependencies.add(ruleName);
-    }
-
-    public List<String> getDependencies() {
-        return dependencies;
-    }
+public List<String> getDependencies() {
+    return dependencies;
 }
 ```
 
-### Step 5: Update UI Highlighting (jre-mode.js)
+### Step 7: Rebuild joget-rule-editor
 
-```javascript
-// Keywords (blue, bold)
-var keywords = new RegExp("^(RULE|WHEN|AND|OR|NOT|DEPENDS|ON|...)\\b", "i");
+```bash
+cd joget-rule-editor
+mvn clean package
 ```
 
 ---
@@ -147,43 +215,43 @@ var keywords = new RegExp("^(RULE|WHEN|AND|OR|NOT|DEPENDS|ON|...)\\b", "i");
 
 **Example**: Add `MATCHES` operator for regex matching.
 
-### Step 1: Add Token Type (Token.java)
+### Step 1: Update Grammar (rules-grammar/RulesScript.g4)
+
+```antlr
+// Add token
+MATCHES : M A T C H E S ;
+
+// Update comparisonOp rule
+comparisonOp
+    : EQ | NEQ | GT | GTE | LT | LTE
+    | CONTAINS | STARTS_WITH | ENDS_WITH
+    | MATCHES                          // New operator
+    ;
+```
+
+### Step 2: Update ComparisonOperator Enum (rules-grammar)
 
 ```java
-public enum Token {
-    // ... existing tokens ...
+// In model/ComparisonOperator.java
+public enum ComparisonOperator {
+    EQ, NEQ, GT, GTE, LT, LTE,
+    CONTAINS, STARTS_WITH, ENDS_WITH,
+    MATCHES;                           // New operator
 
-    // === String Operators ===
-    CONTAINS,       // CONTAINS
-    STARTS_WITH,    // STARTS WITH
-    ENDS_WITH,      // ENDS WITH
-    MATCHES,        // MATCHES (new regex operator)
-
-    // Update helper method
-    public boolean isComparisonOperator() {
-        return this == EQ || this == NEQ || this == GT || this == GTE ||
-               this == LT || this == LTE || this == BETWEEN ||
-               this == IN || this == NOT_IN ||
-               this == CONTAINS || this == STARTS_WITH || this == ENDS_WITH ||
-               this == MATCHES ||  // Add new operator
-               this == IS_EMPTY || this == IS_NOT_EMPTY;
+    public static ComparisonOperator fromToken(String token) {
+        switch (token.toUpperCase()) {
+            // ... existing cases ...
+            case "MATCHES": return MATCHES;
+            default: throw new IllegalArgumentException("Unknown operator: " + token);
+        }
     }
 }
 ```
 
-### Step 2: Register Keyword (RuleScriptLexer.java)
+### Step 3: Update Legacy Condition (joget-rule-editor)
 
 ```java
-static {
-    // ... existing keywords ...
-
-    KEYWORDS.put("MATCHES", Token.MATCHES);
-}
-```
-
-### Step 3: Add to Condition Model (Condition.java)
-
-```java
+// In model/Condition.java
 public enum Operator {
     EQ("="),
     NEQ("!="),
@@ -194,46 +262,28 @@ public enum Operator {
     CONTAINS("CONTAINS"),
     STARTS_WITH("STARTS WITH"),
     ENDS_WITH("ENDS WITH"),
-    MATCHES("MATCHES");  // New operator
-
-    // ... rest of enum ...
+    MATCHES("MATCHES");               // New operator
 }
 ```
 
-### Step 4: Handle in Parser (RuleScriptParser.java)
-
-In `isComparisonOperator()`:
+### Step 4: Update ConditionAdapter (joget-rule-editor)
 
 ```java
-private boolean isComparisonOperator() {
-    Token t = peek().getType();
-    return t == Token.EQ || t == Token.NEQ ||
-           t == Token.GT || t == Token.GTE ||
-           t == Token.LT || t == Token.LTE ||
-           t == Token.CONTAINS || t == Token.STARTS_WITH || t == Token.ENDS_WITH ||
-           t == Token.MATCHES;  // Add new operator
-}
-```
-
-In `parseOperator()`:
-
-```java
-private Operator parseOperator() throws ParseException {
-    TokenInstance t = advance();
-    switch (t.getType()) {
+// In adapter/ConditionAdapter.java
+private static Operator toOldOperator(ComparisonOperator op) {
+    switch (op) {
         // ... existing cases ...
         case MATCHES: return Operator.MATCHES;
         default:
-            throw error(t, "Expected comparison operator");
+            throw new IllegalArgumentException("Unknown operator: " + op);
     }
 }
 ```
 
-### Step 5: Compile to SQL (RuleScriptCompiler.java)
-
-In `operatorToSql()`:
+### Step 5: Update Compiler (joget-rule-editor)
 
 ```java
+// In compiler/RuleScriptCompiler.java
 private String operatorToSql(Condition.Operator op) {
     switch (op) {
         // ... existing cases ...
@@ -243,144 +293,67 @@ private String operatorToSql(Condition.Operator op) {
 }
 ```
 
-For `MATCHES`, you may need special handling in `compileComparison()`:
-
-```java
-private String compileComparison(Condition condition, CompiledRule compiled) {
-    // ... existing code ...
-
-    if (condition.getOperator() == Operator.MATCHES) {
-        // Special handling for regex
-        return sqlRef + " REGEXP " + sqlValue;
-    }
-
-    return sqlRef + " " + sqlOp + " " + sqlValue;
-}
-```
-
 ---
 
 ## Adding a New Function
 
-**Example**: Add `LATEST(grid.field)` to get the most recent value from a grid.
+**Example**: Add `LATEST(grid.field)` to get the most recent value.
 
-### Step 1: Add Token Type (Token.java)
+### Step 1: Update Grammar (rules-grammar/RulesScript.g4)
+
+```antlr
+// Add token
+LATEST : L A T E S T ;
+
+// Update aggregationFunc rule
+aggregationFunc
+    : COUNT | SUM | AVG | MIN | MAX
+    | LATEST                           // New function
+    ;
+```
+
+### Step 2: Add to AggregationFunction Enum (rules-grammar)
 
 ```java
-public enum Token {
-    // ... existing tokens ...
-
-    // === Aggregation Functions ===
-    COUNT,
-    SUM,
-    AVG,
-    MIN,
-    MAX,
-    LATEST,  // New function
-
-    // Update helper
-    public boolean isAggregationFunction() {
-        return this == COUNT || this == SUM || this == AVG ||
-               this == MIN || this == MAX || this == LATEST;
-    }
+// In model/Condition.java (inner enum)
+public enum AggregationFunction {
+    COUNT, SUM, AVG, MIN, MAX,
+    LATEST                             // New function
 }
 ```
 
-### Step 2: Register Keyword (RuleScriptLexer.java)
+### Step 3: Update Legacy Condition (joget-rule-editor)
 
 ```java
-static {
-    // ... existing keywords ...
-
-    KEYWORDS.put("LATEST", Token.LATEST);
-}
-```
-
-### Step 3: Add to Condition Model (Condition.java)
-
-```java
+// In model/Condition.java
 public enum FunctionType {
-    COUNT,
-    SUM,
-    AVG,
-    MIN,
-    MAX,
-    LATEST,  // New function
-    HAS_ANY,
-    HAS_ALL,
-    HAS_NONE
+    COUNT, SUM, AVG, MIN, MAX,
+    LATEST,                            // New function
+    HAS_ANY, HAS_ALL, HAS_NONE
 }
 ```
 
-### Step 4: Handle in Parser (RuleScriptParser.java)
-
-In `tokenToFunctionType()`:
+### Step 4: Update ConditionAdapter (joget-rule-editor)
 
 ```java
-private FunctionType tokenToFunctionType(Token token) {
-    switch (token) {
-        case COUNT: return FunctionType.COUNT;
-        case SUM: return FunctionType.SUM;
-        case AVG: return FunctionType.AVG;
-        case MIN: return FunctionType.MIN;
-        case MAX: return FunctionType.MAX;
-        case LATEST: return FunctionType.LATEST;  // New function
-        case HAS_ANY: return FunctionType.HAS_ANY;
-        case HAS_ALL: return FunctionType.HAS_ALL;
-        case HAS_NONE: return FunctionType.HAS_NONE;
-        default: return null;
-    }
-}
-```
-
-### Step 5: Compile to SQL (RuleScriptCompiler.java)
-
-In `compileFunctionCall()`:
-
-```java
-private String compileFunctionCall(Condition condition, CompiledRule compiled) {
-    // ... existing code ...
-
-    switch (funcType) {
+private static FunctionType toOldAggregationFunction(AggregationFunction func) {
+    switch (func) {
         // ... existing cases ...
-
-        case LATEST:
-            functionSql = compileLatest(functionArg, compiled);
-            break;
-
-        // ... rest of switch ...
+        case LATEST: return FunctionType.LATEST;
+        default:
+            throw new IllegalArgumentException("Unknown function: " + func);
     }
 }
+```
 
-/**
- * Compile LATEST(grid.field) - get most recent value
- */
+### Step 5: Update Compiler (joget-rule-editor)
+
+```java
 private String compileLatest(String fieldPath, CompiledRule compiled) {
-    if (!fieldPath.contains(".")) {
-        output.addWarning("LATEST requires grid.field notation: " + fieldPath);
-        return "NULL";
-    }
-
-    String gridName = fieldPath.substring(0, fieldPath.indexOf('.'));
-    String fieldName = fieldPath.substring(fieldPath.indexOf('.') + 1);
-
-    GridInfo grid = fieldMapping.getGrid(gridName);
-    if (grid == null) {
-        output.addWarning("Unknown grid: " + gridName);
-        return "NULL";
-    }
-
-    compiled.addUsedField(fieldPath);
-
-    // Subquery to get latest value (assuming dateCreated column)
+    // Generate SQL for LATEST function
     return String.format(
-        "(SELECT %s.c_%s FROM %s %s WHERE %s ORDER BY %s.dateCreated DESC LIMIT 1)",
-        grid.getTableAlias(),
-        fieldName,
-        grid.getTableName(),
-        grid.getTableAlias(),
-        grid.getCorrelation(),
-        grid.getTableAlias()
+        "(SELECT %s FROM %s WHERE %s ORDER BY created_date DESC LIMIT 1)",
+        fieldRef, tableName, correlation
     );
 }
 ```
@@ -389,318 +362,169 @@ private String compileLatest(String fieldPath, CompiledRule compiled) {
 
 ## Adding a New Rule Type
 
-**Example**: Add `SCORING_TIER` rule type for tiered scoring systems.
+**Example**: Add `SCORING_TIER` rule type.
 
-### Step 1: Add Token Type (Token.java)
+### Step 1: Update Grammar (rules-grammar/RulesScript.g4)
+
+```antlr
+// Add token
+SCORING_TIER : S C O R I N G '_' T I E R ;
+
+// Update ruleType rule
+ruleType
+    : INCLUSION | EXCLUSION | PRIORITY | BONUS
+    | SCORING_TIER                     // New type
+    ;
+```
+
+### Step 2: Update RuleType Enum (rules-grammar)
 
 ```java
-public enum Token {
-    // ... existing tokens ...
-
-    // === Rule Types ===
+// In model/RuleType.java
+public enum RuleType {
     INCLUSION,
     EXCLUSION,
     PRIORITY,
     BONUS,
-    SCORING_TIER,  // New rule type
-
-    public boolean isRuleType() {
-        return this == INCLUSION || this == EXCLUSION ||
-               this == PRIORITY || this == BONUS || this == SCORING_TIER;
-    }
+    SCORING_TIER                       // New type
 }
 ```
 
-### Step 2: Register Keyword (RuleScriptLexer.java)
+### Step 3: Update Legacy Rule (joget-rule-editor)
 
 ```java
-static {
-    // ... existing keywords ...
-
-    KEYWORDS.put("SCORING_TIER", Token.SCORING_TIER);
+// In model/Rule.java
+public enum RuleType {
+    INCLUSION,
+    EXCLUSION,
+    PRIORITY,
+    BONUS,
+    SCORING_TIER                       // New type
 }
 ```
 
-### Step 3: Update Rule Model (Rule.java)
+### Step 4: Update RuleAdapter (joget-rule-editor)
 
 ```java
-public class Rule {
-    public enum RuleType {
-        INCLUSION,
-        EXCLUSION,
-        PRIORITY,
-        BONUS,
-        SCORING_TIER  // New type
-    }
-
-    // ... rest of class ...
-}
-```
-
-### Step 4: Handle in Parser (RuleScriptParser.java)
-
-In `parseRuleType()`:
-
-```java
-private RuleType parseRuleType() throws ParseException {
-    if (check(Token.INCLUSION)) {
-        advance();
-        return RuleType.INCLUSION;
-    } else if (check(Token.EXCLUSION)) {
-        advance();
-        return RuleType.EXCLUSION;
-    } else if (check(Token.PRIORITY)) {
-        advance();
-        return RuleType.PRIORITY;
-    } else if (check(Token.BONUS)) {
-        advance();
-        return RuleType.BONUS;
-    } else if (check(Token.SCORING_TIER)) {
-        advance();
-        return RuleType.SCORING_TIER;
-    } else {
-        throw error(peek(), "Expected rule type");
-    }
-}
-```
-
-### Step 5: Handle in Compiler (RuleScriptCompiler.java)
-
-In `compile()` method, handle the new type:
-
-```java
-for (Rule rule : rules) {
-    CompiledRule compiled = compileRule(rule);
-    output.addCompiledRule(compiled);
-
-    switch (rule.getType()) {
-        case INCLUSION:
-            // ... existing ...
-            break;
-        case EXCLUSION:
-            // ... existing ...
-            break;
-        case SCORING_TIER:
-            // Custom handling for tiered scoring
-            compileScoringTier(rule, compiled);
-            break;
-        // ... other cases ...
+private static RuleType toOldRuleType(global.govstack.rules.grammar.model.RuleType newType) {
+    switch (newType) {
+        // ... existing cases ...
+        case SCORING_TIER: return RuleType.SCORING_TIER;
+        default:
+            throw new IllegalArgumentException("Unknown rule type: " + newType);
     }
 }
 ```
 
 ---
 
-## Adding a New Rule Clause
+## Updating the Adapters
 
-**Example**: Add `EFFECTIVE FROM date TO date` for time-bound rules.
+The adapter layer in `joget-rule-editor/src/main/java/global/govstack/ruleeditor/adapter/` converts between the immutable ANTLR model and the legacy mutable model.
 
-### Step 1: Add Token Types (Token.java)
+### ConditionAdapter
 
-```java
-public enum Token {
-    // ... existing tokens ...
-
-    EFFECTIVE,      // EFFECTIVE FROM ... TO ...
-    FROM,
-    TO,
-}
-```
-
-### Step 2: Handle Multi-Word Keyword (RuleScriptLexer.java)
+Handles conversion of the `Condition` sealed interface hierarchy:
 
 ```java
-static {
-    // ... existing keywords ...
-
-    KEYWORDS.put("EFFECTIVE", Token.EFFECTIVE);
-    KEYWORDS.put("FROM", Token.FROM);
-    KEYWORDS.put("TO", Token.TO);
-}
+// Condition types handled:
+// - Condition.And         → Condition.and(left, right)
+// - Condition.Or          → Condition.or(left, right)
+// - Condition.Not         → Condition.not(inner)
+// - Condition.SimpleComparison → Condition.comparison(field, op, value)
+// - Condition.Between     → Condition.between(field, min, max)
+// - Condition.In          → Condition.in(field, values)
+// - Condition.NotIn       → Condition.not(Condition.in(...))
+// - Condition.IsEmpty     → Condition.isEmpty(field)
+// - Condition.IsNotEmpty  → Condition.isNotEmpty(field)
+// - Condition.Aggregation → Condition.functionCall(func, field)
+// - Condition.GridCheck   → Condition.functionCall(func, field)
 ```
 
-### Step 3: Update Rule Model (Rule.java)
+### RuleAdapter
+
+Handles conversion of `Rule` records:
 
 ```java
-public class Rule {
-    // ... existing fields ...
-
-    private String effectiveFrom;
-    private String effectiveTo;
-
-    public void setEffectiveFrom(String date) {
-        this.effectiveFrom = date;
-    }
-
-    public String getEffectiveFrom() {
-        return effectiveFrom;
-    }
-
-    public void setEffectiveTo(String date) {
-        this.effectiveTo = date;
-    }
-
-    public String getEffectiveTo() {
-        return effectiveTo;
-    }
-}
+// Fields mapped:
+// - name()        → setName()
+// - type()        → setType()
+// - category()    → setCategory()
+// - isMandatory() → setMandatory()
+// - order()       → setOrder()
+// - condition()   → setCondition() via ConditionAdapter
+// - score()       → setScore()
+// - weight()      → setWeight()
+// - passMessage() → setPassMessage()
+// - failMessage() → setFailMessage()
 ```
 
-### Step 4: Parse the Clause (RuleScriptParser.java)
+### ValueAdapter
+
+Handles conversion of `Value` sealed interface:
 
 ```java
-private Rule parseRule() throws ParseException {
-    // ... existing code ...
-
-    while (!isAtEnd() && !check(Token.RULE)) {
-        // ... existing clause handling ...
-
-        } else if (check(Token.EFFECTIVE)) {
-            advance();  // consume EFFECTIVE
-            consume(Token.FROM, "Expected 'FROM' after EFFECTIVE");
-            TokenInstance fromToken = consume(Token.STRING, "Expected date after FROM");
-            rule.setEffectiveFrom(fromToken.getStringValue());
-
-            consume(Token.TO, "Expected 'TO' after date");
-            TokenInstance toToken = consume(Token.STRING, "Expected date after TO");
-            rule.setEffectiveTo(toToken.getStringValue());
-
-        } else if (check(Token.NEWLINE)) {
-            advance();
-        } else {
-            break;
-        }
-    }
-
-    return rule;
-}
-```
-
-### Step 5: Handle in Compiler (RuleScriptCompiler.java)
-
-```java
-private CompiledRule compileRule(Rule rule) {
-    // ... existing code ...
-
-    // Add date range condition if specified
-    if (rule.getEffectiveFrom() != null && rule.getEffectiveTo() != null) {
-        String dateClause = String.format(
-            "(CURRENT_DATE BETWEEN '%s' AND '%s')",
-            rule.getEffectiveFrom(),
-            rule.getEffectiveTo()
-        );
-        // Combine with existing WHERE clause
-        if (whereClause != null && !whereClause.isEmpty()) {
-            whereClause = "(" + whereClause + ") AND " + dateClause;
-        } else {
-            whereClause = dateClause;
-        }
-        compiled.setWhereClause(whereClause);
-    }
-
-    return compiled;
-}
-```
-
----
-
-## Use Case: Subsidy Program Rules
-
-Here's a complete example of extending EREL for a subsidy program with:
-- Benefit tiers
-- Program-specific categories
-- Eligibility windows
-
-### New Syntax
-
-```text
-RULE "Small Farmer Subsidy"
-  TYPE: SUBSIDY_TIER
-  PROGRAM: "AGRICULTURE_SUPPORT_2025"
-  TIER: 1
-  BENEFIT: 5000
-  CATEGORY: AGRICULTURE
-  WHEN farmSize < 5 AND isRegisteredFarmer = true
-  EFFECTIVE FROM "2025-01-01" TO "2025-12-31"
-  FAIL MESSAGE: "Does not qualify for small farmer subsidy"
-```
-
-### Implementation Steps
-
-1. **Add new tokens**: `SUBSIDY_TIER`, `PROGRAM`, `TIER`, `BENEFIT`
-2. **Add to lexer**: Register in KEYWORDS map
-3. **Update Rule**: Add `programCode`, `tier`, `benefitAmount` fields
-4. **Update parser**: Handle new clauses in `parseRule()`
-5. **Update compiler**: Generate appropriate SQL with benefit calculations
-6. **Update UI**: Add syntax highlighting for new keywords
-
-### SQL Output Example
-
-```sql
-SELECT
-    f.id,
-    f.farmer_name,
-    CASE
-        WHEN f.c_farmSize < 5 AND f.c_isRegisteredFarmer = 'true'
-             AND CURRENT_DATE BETWEEN '2025-01-01' AND '2025-12-31'
-        THEN 5000
-        ELSE 0
-    END AS tier_1_benefit
-FROM app_fd_farmer f
-WHERE f.c_programCode = 'AGRICULTURE_SUPPORT_2025'
+// Value types mapped:
+// - Value.StringValue     → String
+// - Value.NumberValue     → Double
+// - Value.BooleanValue    → Boolean
+// - Value.IdentifierValue → String (field reference)
 ```
 
 ---
 
 ## Updating the UI
 
-After modifying the grammar, update these files:
+After modifying the grammar, update the UI syntax highlighting:
 
 ### jre-mode.js (Syntax Highlighting)
 
 ```javascript
-// Add new keywords to appropriate category
-var keywords = new RegExp("^(RULE|WHEN|AND|OR|NOT|EFFECTIVE|FROM|TO|DEPENDS|ON|...)\\b", "i");
-var clauses = new RegExp("^(TYPE|CATEGORY|MANDATORY|PROGRAM|TIER|BENEFIT|...)\\b", "i");
-var types = new RegExp("^(INCLUSION|EXCLUSION|SUBSIDY_TIER|...)\\b", "i");
+CodeMirror.defineMode("jre", function() {
+    // Add new keywords to appropriate category
+    var keywords = new RegExp(
+        "^(RULE|WHEN|AND|OR|NOT|DEPENDS|ON|MATCHES|LATEST)\\b", "i"
+    );
+
+    var types = new RegExp(
+        "^(INCLUSION|EXCLUSION|PRIORITY|BONUS|SCORING_TIER)\\b", "i"
+    );
+
+    // ... rest of mode definition
+});
 ```
 
 ### jre-editor.js (Help Panel)
 
-Update `buildHTML()` to include new syntax in the help panel:
+Update the help panel to include new syntax:
 
 ```javascript
-'<li><code>EFFECTIVE FROM</code> date <code>TO</code> date</li>\
-<li><code>DEPENDS ON</code> "rule-name"</li>\
-<li><code>PROGRAM:</code> "program-code"</li>'
-```
-
-### jre-editor.js (Sample Script)
-
-Update `getSampleScript()` with examples of new syntax:
-
-```javascript
-function getSampleScript() {
-    return '\
-RULE "Subsidy Tier 1"\n\
-  TYPE: SUBSIDY_TIER\n\
-  PROGRAM: "AGRI_2025"\n\
-  TIER: 1\n\
-  BENEFIT: 5000\n\
-  WHEN farmSize < 5\n\
-  EFFECTIVE FROM "2025-01-01" TO "2025-12-31"';
-}
+'<li><code>DEPENDS ON</code> "rule-name"</li>\
+<li><code>MATCHES</code> "regex-pattern"</li>\
+<li><code>LATEST(grid.field)</code> - most recent value</li>'
 ```
 
 ---
 
 ## Testing Your Extensions
 
+### Rebuild Both Projects
+
+```bash
+# Rebuild rules-grammar first
+cd rules-grammar
+mvn clean install
+
+# Then rebuild joget-rule-editor
+cd ../joget-rule-editor
+mvn clean package
+```
+
 ### Unit Test Template
 
 ```java
 @Test
-public void testNewKeyword() {
+void testNewKeyword() {
     String script = """
         RULE "Test Dependency"
           TYPE: INCLUSION
@@ -718,27 +542,6 @@ public void testNewKeyword() {
     assertEquals(1, rule.getDependencies().size());
     assertEquals("Parent Rule", rule.getDependencies().get(0));
 }
-```
-
-### Manual Testing
-
-1. Build: `mvn clean package`
-2. Deploy to Joget
-3. Test in browser console:
-
-```javascript
-// Validate new syntax
-fetch('/jw/api/erel/rules/validate', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'api_id': 'YOUR_API_ID',
-        'api_key': 'YOUR_API_KEY'
-    },
-    body: JSON.stringify({
-        script: 'RULE "Test" TYPE: INCLUSION DEPENDS ON "Other" WHEN age >= 18'
-    })
-}).then(r => r.json()).then(console.log);
 ```
 
 ---
