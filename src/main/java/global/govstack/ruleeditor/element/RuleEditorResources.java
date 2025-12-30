@@ -147,7 +147,10 @@ public class RuleEditorResources extends ExtDefaultPlugin implements PluginWebSu
             String extension = sanitizedFile.substring(sanitizedFile.lastIndexOf('.') + 1).toLowerCase();
             String contentType = CONTENT_TYPES.getOrDefault(extension, "application/octet-stream");
             response.setContentType(contentType);
-            response.setHeader("Cache-Control", "public, max-age=3600");
+            // Disable caching to ensure latest version is always served
+            response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            response.setHeader("Pragma", "no-cache");
+            response.setHeader("Expires", "0");
 
             // Stream the file
             OutputStream os = response.getOutputStream();

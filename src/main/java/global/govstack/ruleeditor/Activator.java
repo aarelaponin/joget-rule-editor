@@ -2,7 +2,6 @@ package global.govstack.ruleeditor;
 
 import global.govstack.ruleeditor.element.RuleEditorElement;
 import global.govstack.ruleeditor.element.RuleEditorResources;
-import global.govstack.ruleeditor.lib.RulesServiceProvider;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceRegistration;
@@ -14,9 +13,10 @@ import java.util.Collection;
  * OSGi Bundle Activator for Joget Rule Editor Plugin.
  *
  * Registers:
- * - RulesServiceProvider: API endpoints for validation and compilation
  * - RuleEditorResources: Static file serving for CodeMirror
  * - RuleEditorElement: Form element for Rules Script editing
+ *
+ * Note: API endpoints are provided by the separate joget-rules-api plugin.
  */
 public class Activator implements BundleActivator {
 
@@ -25,13 +25,6 @@ public class Activator implements BundleActivator {
     @Override
     public void start(BundleContext context) {
         registrationList = new ArrayList<ServiceRegistration>();
-
-        // Register the Rules Parser API plugin
-        registrationList.add(context.registerService(
-            RulesServiceProvider.class.getName(),
-            new RulesServiceProvider(),
-            null
-        ));
 
         // Register the Rule Editor Resources plugin (serves static files)
         registrationList.add(context.registerService(

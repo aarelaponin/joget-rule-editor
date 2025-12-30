@@ -8,6 +8,7 @@
     <packaging>bundle</packaging>
     <version>8.1-SNAPSHOT</version>
     <name>Joget Rule Editor Plugin</name>
+    <description>Generic Rule Editor UI component with CodeMirror editor for Rules Script DSL</description>
     <url>https://www.govstack.global</url>
 
     <properties>
@@ -42,15 +43,6 @@
             </plugin>
 
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
-                <configuration>
-                    <skipTests>false</skipTests>
-                </configuration>
-            </plugin>
-
-            <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
                 <version>5.1.9</version>
@@ -67,27 +59,17 @@
                             properties=src/main/resources/properties
                         </Include-Resource>
                         <Import-Package>
-                            org.joget.api.annotations,
-                            org.joget.api.model,
-                            org.joget.api.service,
                             org.joget.commons.util,
                             org.joget.plugin.base,
                             org.joget.plugin.property.model,
                             org.joget.plugin.property.service,
-                            org.joget.directory.model,
-                            org.joget.directory.model.service,
-                            org.joget.workflow.model,
-                            org.joget.workflow.model.service,
                             org.joget.apps.app.model,
                             org.joget.apps.app.service,
-                            org.joget.apps.form.dao,
                             org.joget.apps.form.model,
                             org.joget.apps.form.service,
                             org.osgi.framework;version="1.3.0",
                             *;resolution:=optional
                         </Import-Package>
-                        <!-- Embed rules-grammar and ANTLR runtime into the bundle -->
-                        <Embed-Dependency>rules-grammar,antlr4-runtime;inline=true</Embed-Dependency>
                         <DynamicImport-Package>*</DynamicImport-Package>
                     </instructions>
                 </configuration>
@@ -96,28 +78,6 @@
     </build>
 
     <dependencies>
-        <!-- Rules Grammar - ANTLR-based parser -->
-        <dependency>
-            <groupId>global.govstack</groupId>
-            <artifactId>rules-grammar</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
-        </dependency>
-
-        <!-- ANTLR Runtime - explicitly included for OSGi embedding -->
-        <dependency>
-            <groupId>org.antlr</groupId>
-            <artifactId>antlr4-runtime</artifactId>
-            <version>4.13.1</version>
-        </dependency>
-
-        <!-- Testing dependencies -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-            <scope>test</scope>
-        </dependency>
-
         <!-- Joget dependencies (provided scope) -->
         <dependency>
             <groupId>org.joget</groupId>
@@ -132,13 +92,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.joget.api</groupId>
-            <artifactId>apibuilder_api</artifactId>
-            <version>8.1-SNAPSHOT</version>
-            <scope>provided</scope>
-        </dependency>
-
         <!-- Servlet API (provided by Joget) -->
         <dependency>
             <groupId>javax.servlet</groupId>
@@ -147,7 +100,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- JSON - provided by wflow-core, just need for compilation -->
+        <!-- JSON - provided by wflow-core -->
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>

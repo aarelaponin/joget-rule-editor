@@ -15,9 +15,12 @@
     <div class="form-clear"></div>
 </div>
 
+<#-- Cache bust version - change to force reload -->
+<#assign jreCacheVersion = "20251230_v7">
+
 <#-- Load CSS (only once) -->
-<link rel="stylesheet" href="${resourceBase!}codemirror.min.css" data-jre-css="true">
-<link rel="stylesheet" href="${resourceBase!}jre-editor.css" data-jre-css="true">
+<link rel="stylesheet" href="${resourceBase!}codemirror.min.css&v=${jreCacheVersion}" data-jre-css="true">
+<link rel="stylesheet" href="${resourceBase!}jre-editor.css&v=${jreCacheVersion}" data-jre-css="true">
 
 <#-- Load JS and initialize (only once) -->
 <script>
@@ -39,7 +42,7 @@
      * Load a script by URL, extracting the actual filename from query params
      */
     function loadScript(src, callback) {
-        // Extract actual filename from URL like "...service?file=jre-editor.js"
+        // Extract actual filename from URL like "...service?file=jre-editor.js&v=xxx"
         var filename = src;
         var fileParam = src.match(/[?&]file=([^&]+)/);
         if (fileParam) {
@@ -48,29 +51,21 @@
 
         log('Loading script: ' + filename + ' from ' + src);
 
-        // Check if already loaded by looking for our data attribute
-        var existing = document.querySelector('script[data-jre-file="' + filename + '"]');
+        // Check if already loaded WITH THE SAME VERSION
+        var existing = document.querySelector('script[data-jre-src="' + src + '"]');
         if (existing) {
-            log('Script already loaded: ' + filename);
+            log('Script already loaded (same version): ' + filename);
             callback();
             return;
         }
 
-        // Also check for CodeMirror and JREEditor globals
-        if (filename === 'codemirror.min.js' && typeof CodeMirror !== 'undefined') {
-            log('CodeMirror already available');
-            callback();
-            return;
-        }
-        if (filename === 'jre-editor.js' && typeof JREEditor !== 'undefined') {
-            log('JREEditor already available');
-            callback();
-            return;
-        }
+        // For different versions, we still load - don't check globals here
+        // This ensures cache busting works properly
 
         var script = document.createElement('script');
         script.src = src;
         script.setAttribute('data-jre-file', filename);
+        script.setAttribute('data-jre-src', src);
 
         script.onload = function() {
             log('Loaded: ' + filename);
@@ -122,12 +117,13 @@
                 apiId: '${apiId!}',
                 apiKey: '${apiKey!}',
                 scopeCode: '${scopeCode!}',
-                contextType: '${contextType!}',
-                contextCode: '${contextCode!}',
                 hiddenFieldId: '${fieldId!}',
+                rulesetCodeFieldId: '${rulesetCodeFieldId!}',
+                rulesetNameFieldId: '${rulesetNameFieldId!}',
                 height: '${height!}',
                 showDictionary: ${showDictionary?c},
                 showSaveButton: ${showSaveButton?c},
+                filterConfig: ${filterConfig!},
                 onValidate: function(result) {
                     log('Validation: ' + (result.valid ? 'passed' : 'failed'));
                 },
@@ -146,18 +142,19 @@
         }
     }
 
-    // Define resource base
+    // Define resource base and cache version
     var resourceBase = '${resourceBase!}';
-    log('Resource base: ' + resourceBase);
+    var cacheVersion = '${jreCacheVersion}';
+    log('Resource base: ' + resourceBase + ', version: ' + cacheVersion);
 
     // Load scripts in sequence: CodeMirror -> JRE Mode -> JRE Editor -> Init
-    loadScript(resourceBase + 'codemirror.min.js', function() {
+    loadScript(resourceBase + 'codemirror.min.js&v=' + cacheVersion, function() {
         log('CodeMirror loaded, typeof CodeMirror = ' + typeof CodeMirror);
 
-        loadScript(resourceBase + 'jre-mode.js', function() {
+        loadScript(resourceBase + 'jre-mode.js&v=' + cacheVersion, function() {
             log('JRE mode loaded');
 
-            loadScript(resourceBase + 'jre-editor.js', function() {
+            loadScript(resourceBase + 'jre-editor.js&v=' + cacheVersion, function() {
                 log('JRE editor loaded, typeof JREEditor = ' + typeof JREEditor);
 
                 // Use requestAnimationFrame to ensure DOM is ready

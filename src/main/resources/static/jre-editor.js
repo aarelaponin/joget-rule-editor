@@ -3,13 +3,13 @@
  *
  * Usage:
  *   var editor = JREEditor.init('container-id', {
- *       apiBase: '/jw/api/erel/rules',
+ *       apiBase: '/jw/api/jre/jre',
  *       apiId: 'API-xxx',
  *       apiKey: 'xxx',
  *       scopeCode: 'FARMER_ELIGIBILITY',
- *       contextType: 'ELIGIBILITY',
- *       contextCode: 'PROG-2025-001',
  *       hiddenFieldId: 'eligibilityScript',
+ *       rulesetCodeFieldId: 'rulesetCode',     // optional: form field for ruleset code
+ *       rulesetNameFieldId: 'rulesetName',     // optional: form field for ruleset name
  *       onValidate: function(result) { ... },
  *       onSave: function(result) { ... }
  *   });
@@ -18,18 +18,23 @@ var JREEditor = (function() {
     'use strict';
 
     var defaults = {
-        apiBase: '/jw/api/erel/rules',
+        apiBase: '/jw/api/jre/jre',
         apiId: '',
         apiKey: '',
         scopeCode: 'FARMER_ELIGIBILITY',
-        contextType: 'ELIGIBILITY',
-        contextCode: '',
         rulesetCode: '',
         hiddenFieldId: 'eligibilityScript',
         rulesetCodeFieldId: '',
+        rulesetNameFieldId: '',
         height: 'auto',
         showDictionary: true,
         showSaveButton: true,
+        filterConfig: {
+            categories: [],
+            fieldTypes: [],
+            isGrid: '',
+            lookupFormId: ''
+        },
         onValidate: null,
         onSave: null,
         onError: null
@@ -37,6 +42,9 @@ var JREEditor = (function() {
 
     // Field dictionary cache
     var fieldDictionary = null;
+
+    // Categories cache (loaded from API)
+    var categoriesCache = null;
 
     /**
      * Apply full-width layout to parent form elements using inline styles.
@@ -162,11 +170,22 @@ var JREEditor = (function() {
             dictPanel: container.querySelector('.jre-dict-panel'),
             dictContent: container.querySelector('.jre-dict-content'),
             dictSearch: container.querySelector('.jre-dict-search'),
+            filterCategory: container.querySelector('.jre-filter-category'),
+            filterType: container.querySelector('.jre-filter-type'),
+            filterGrid: container.querySelector('.jre-filter-grid'),
             helpPanel: container.querySelector('.jre-help-panel'),
             status: container.querySelector('.jre-status'),
             textarea: container.querySelector('.jre-textarea'),
             hiddenField: document.getElementById(opts.hiddenFieldId),
-            rulesetCodeField: opts.rulesetCodeFieldId ? document.getElementById(opts.rulesetCodeFieldId) : null
+            rulesetCodeField: opts.rulesetCodeFieldId ? document.getElementById(opts.rulesetCodeFieldId) : null,
+            rulesetNameField: opts.rulesetNameFieldId ? document.getElementById(opts.rulesetNameFieldId) : null
+        };
+
+        // Runtime filter state (separate from form-level config)
+        var runtimeFilters = {
+            category: '',
+            type: '',
+            grid: ''
         };
 
         // Initialize CodeMirror
@@ -221,14 +240,18 @@ var JREEditor = (function() {
         var lineMarkers = [];
         var isDirty = false;
 
-        // Load existing value
+        // Load existing value from hidden field (form submission value)
         if (elements.hiddenField && elements.hiddenField.value) {
             cm.setValue(elements.hiddenField.value);
         }
 
-        // Load ruleset if code provided
-        if (opts.rulesetCode) {
-            loadRuleset(opts.rulesetCode);
+        // Load ruleset if code provided (either directly or from form field)
+        var rulesetCodeToLoad = opts.rulesetCode || '';
+        if (!rulesetCodeToLoad && elements.rulesetCodeField && elements.rulesetCodeField.value) {
+            rulesetCodeToLoad = elements.rulesetCodeField.value;
+        }
+        if (rulesetCodeToLoad) {
+            loadRuleset(rulesetCodeToLoad);
         }
 
         updateStatus();
@@ -279,8 +302,29 @@ var JREEditor = (function() {
             elements.dictSearch.addEventListener('input', filterDictionary);
         }
 
-        // Load field dictionary
+        // Filter dropdown handlers
+        if (elements.filterCategory) {
+            elements.filterCategory.addEventListener('change', function() {
+                runtimeFilters.category = this.value;
+                applyRuntimeFilters();
+            });
+        }
+        if (elements.filterType) {
+            elements.filterType.addEventListener('change', function() {
+                runtimeFilters.type = this.value;
+                applyRuntimeFilters();
+            });
+        }
+        if (elements.filterGrid) {
+            elements.filterGrid.addEventListener('change', function() {
+                runtimeFilters.grid = this.value;
+                applyRuntimeFilters();
+            });
+        }
+
+        // Load field dictionary and categories
         if (opts.showDictionary) {
+            loadCategories();
             loadFieldDictionary();
         }
 
@@ -411,12 +455,24 @@ var JREEditor = (function() {
             showMessage('loading', 'Saving...', null);
             if (elements.saveBtn) elements.saveBtn.disabled = true;
 
+            // Get ruleset code from form field if configured
+            var rulesetCode = opts.rulesetCode || '';
+            if (!rulesetCode && opts.rulesetCodeFieldId) {
+                var codeField = document.getElementById(opts.rulesetCodeFieldId);
+                if (codeField) rulesetCode = codeField.value || '';
+            }
+
+            // Get ruleset name from form field if configured
+            var rulesetName = 'Untitled Ruleset';
+            if (opts.rulesetNameFieldId) {
+                var nameField = document.getElementById(opts.rulesetNameFieldId);
+                if (nameField && nameField.value) rulesetName = nameField.value;
+            }
+
             var data = {
                 script: script,
-                rulesetCode: opts.rulesetCode || '',
-                rulesetName: 'Eligibility Rules',
-                contextType: opts.contextType,
-                contextCode: opts.contextCode,
+                rulesetCode: rulesetCode,
+                rulesetName: rulesetName,
                 fieldScopeCode: opts.scopeCode
             };
 
@@ -523,7 +579,11 @@ var JREEditor = (function() {
          */
         function toggleDictionary() {
             var isVisible = elements.dictPanel.classList.toggle('visible');
-            elements.dictBtn.textContent = isVisible ? '✕ Fields' : '📖 Fields';
+
+            // Preserve field count in button text
+            var countMatch = elements.dictBtn.textContent.match(/\((\d+)\)/);
+            var countStr = countMatch ? ' (' + countMatch[1] + ')' : '';
+            elements.dictBtn.textContent = isVisible ? '✕ Fields' + countStr : '📖 Fields' + countStr;
 
             // Refresh CodeMirror after toggle (editor width changed)
             setTimeout(function() {
@@ -541,12 +601,140 @@ var JREEditor = (function() {
                 return;
             }
 
-            apiCall('GET', '/fields?scopeCode=' + encodeURIComponent(opts.scopeCode), null, function(response) {
+            // Build query params with form-level filters
+            var params = 'scopeCode=' + encodeURIComponent(opts.scopeCode);
+
+            // Add form-level filter params (from plugin configuration)
+            var filterConfig = opts.filterConfig || {};
+            if (filterConfig.categories && filterConfig.categories.length > 0) {
+                params += '&categories=' + encodeURIComponent(filterConfig.categories.join(','));
+            }
+            if (filterConfig.fieldTypes && filterConfig.fieldTypes.length > 0) {
+                params += '&fieldTypes=' + encodeURIComponent(filterConfig.fieldTypes.join(','));
+            }
+            if (filterConfig.isGrid) {
+                params += '&isGrid=' + encodeURIComponent(filterConfig.isGrid);
+            }
+            if (filterConfig.lookupFormId) {
+                params += '&lookupFormId=' + encodeURIComponent(filterConfig.lookupFormId);
+            }
+
+            console.log('[JRE] Loading fields with params:', params);
+
+            apiCall('GET', '/fields?' + params, null, function(response) {
                 fieldDictionary = response;
                 renderDictionary(response);
             }, function(error) {
                 console.error('Failed to load field dictionary:', error);
             });
+        }
+
+        /**
+         * Load categories from API for filter dropdown
+         */
+        function loadCategories() {
+            if (!opts.apiId || !opts.apiKey) {
+                console.warn('[JRE] Cannot load categories - API credentials not configured');
+                return;
+            }
+
+            // Use cache if available
+            if (categoriesCache) {
+                populateCategoryDropdown(categoriesCache);
+                return;
+            }
+
+            console.log('[JRE] Loading categories from API...');
+            apiCall('GET', '/categories', null, function(response) {
+                console.log('[JRE] Categories API response:', response);
+
+                // Handle different response formats
+                var categories = response;
+                if (response && response.categories) {
+                    categories = response.categories;
+                } else if (response && !Array.isArray(response)) {
+                    console.warn('[JRE] Unexpected categories response format:', typeof response);
+                    return;
+                }
+
+                categoriesCache = categories;
+                populateCategoryDropdown(categories);
+            }, function(error) {
+                console.error('[JRE] Failed to load categories:', error);
+            });
+        }
+
+        /**
+         * Populate category dropdown with API data
+         */
+        function populateCategoryDropdown(categories) {
+            console.log('[JRE] Populating category dropdown with:', categories);
+            if (!elements.filterCategory) {
+                console.warn('[JRE] Category filter element not found');
+                return;
+            }
+            if (!categories || !Array.isArray(categories) || categories.length === 0) {
+                console.warn('[JRE] No categories to populate');
+                return;
+            }
+
+            // Keep "All" option, add dynamic categories
+            var html = '<option value="">All</option>';
+            categories.forEach(function(cat) {
+                html += '<option value="' + escapeHtml(cat.code) + '">' + escapeHtml(cat.name) + '</option>';
+            });
+            elements.filterCategory.innerHTML = html;
+            console.log('[JRE] Category dropdown populated with', categories.length, 'categories');
+        }
+
+        /**
+         * Apply runtime filters (client-side filtering)
+         */
+        function applyRuntimeFilters() {
+            if (!elements.dictContent) return;
+
+            var fields = elements.dictContent.querySelectorAll('.jre-dict-field');
+
+            fields.forEach(function(el) {
+                var fieldCategory = el.getAttribute('data-category') || '';
+                var fieldType = el.getAttribute('data-type') || '';
+                var fieldIsGrid = el.getAttribute('data-grid') || 'N';
+
+                var visible = true;
+
+                // Filter by category
+                if (runtimeFilters.category && fieldCategory !== runtimeFilters.category) {
+                    visible = false;
+                }
+
+                // Filter by type
+                if (runtimeFilters.type && fieldType !== runtimeFilters.type) {
+                    visible = false;
+                }
+
+                // Filter by grid
+                if (runtimeFilters.grid) {
+                    var isGrid = fieldIsGrid === 'Y' || fieldIsGrid === 'true';
+                    if (runtimeFilters.grid === 'Y' && !isGrid) {
+                        visible = false;
+                    } else if (runtimeFilters.grid === 'N' && isGrid) {
+                        visible = false;
+                    }
+                }
+
+                el.style.display = visible ? '' : 'none';
+            });
+
+            // Show/hide empty categories
+            elements.dictContent.querySelectorAll('.jre-dict-category').forEach(function(cat) {
+                var visibleFields = cat.querySelectorAll('.jre-dict-field:not([style*="display: none"])');
+                cat.style.display = visibleFields.length > 0 ? '' : 'none';
+            });
+
+            // Also apply search filter if there's a search term
+            if (elements.dictSearch && elements.dictSearch.value) {
+                filterDictionary();
+            }
         }
 
         /**
@@ -556,14 +744,23 @@ var JREEditor = (function() {
             if (!elements.dictContent) return;
 
             var html = '';
+            var totalFields = data.count || 0;
+            var uniqueTypes = {};
+            console.log('[JRE] Rendering dictionary, count:', totalFields, 'data:', data);
 
             if (data.categories) {
                 data.categories.forEach(function(cat) {
-                    html += '<div class="jre-dict-category">';
-                    html += '<div class="jre-dict-category-name">' + escapeHtml(cat.category) + '</div>';
+                    html += '<div class="jre-dict-category" data-category="' + escapeHtml(cat.category) + '">';
+                    html += '<div class="jre-dict-category-name">' + escapeHtml(cat.category) + ' (' + cat.fields.length + ')</div>';
 
                     cat.fields.forEach(function(field) {
-                        html += '<div class="jre-dict-field" data-field="' + escapeHtml(field.fieldId) + '">';
+                        var isGridVal = field.isGrid ? 'Y' : 'N';
+                        uniqueTypes[field.fieldType] = true;
+
+                        html += '<div class="jre-dict-field" data-field="' + escapeHtml(field.fieldId) + '"';
+                        html += ' data-category="' + escapeHtml(cat.category) + '"';
+                        html += ' data-type="' + escapeHtml(field.fieldType) + '"';
+                        html += ' data-grid="' + isGridVal + '">';
                         html += '<code>' + escapeHtml(field.fieldId) + '</code>';
                         html += '<span class="jre-dict-field-label">' + escapeHtml(field.fieldLabel) + '</span>';
                         html += '<span class="jre-dict-field-type">' + escapeHtml(field.fieldType) + '</span>';
@@ -579,6 +776,24 @@ var JREEditor = (function() {
 
             elements.dictContent.innerHTML = html;
 
+            // Populate Type dropdown with types found in data
+            if (elements.filterType) {
+                var typeHtml = '<option value="">All</option>';
+                Object.keys(uniqueTypes).sort().forEach(function(type) {
+                    typeHtml += '<option value="' + escapeHtml(type) + '">' + escapeHtml(type) + '</option>';
+                });
+                elements.filterType.innerHTML = typeHtml;
+            }
+
+            // Update button with field count
+            console.log('[JRE] Updating button, dictBtn:', elements.dictBtn, 'totalFields:', totalFields);
+            if (elements.dictBtn) {
+                var isVisible = elements.dictPanel.classList.contains('visible');
+                var newText = isVisible ? '✕ Fields (' + totalFields + ')' : '📖 Fields (' + totalFields + ')';
+                console.log('[JRE] Setting button text to:', newText);
+                elements.dictBtn.textContent = newText;
+            }
+
             // Click to insert field
             elements.dictContent.querySelectorAll('.jre-dict-field').forEach(function(el) {
                 el.addEventListener('click', function() {
@@ -590,7 +805,7 @@ var JREEditor = (function() {
         }
 
         /**
-         * Filter dictionary by search
+         * Filter dictionary by search (combines with runtime filters)
          */
         function filterDictionary() {
             var query = elements.dictSearch.value.toLowerCase();
@@ -599,14 +814,37 @@ var JREEditor = (function() {
             fields.forEach(function(el) {
                 var fieldId = el.getAttribute('data-field').toLowerCase();
                 var label = el.querySelector('.jre-dict-field-label').textContent.toLowerCase();
-                var match = fieldId.includes(query) || label.includes(query);
-                el.style.display = match ? '' : 'none';
+                var fieldCategory = el.getAttribute('data-category') || '';
+                var fieldType = el.getAttribute('data-type') || '';
+                var fieldIsGrid = el.getAttribute('data-grid') || 'N';
+
+                // Check search match
+                var searchMatch = !query || fieldId.includes(query) || label.includes(query);
+
+                // Check runtime filter match
+                var filterMatch = true;
+                if (runtimeFilters.category && fieldCategory !== runtimeFilters.category) {
+                    filterMatch = false;
+                }
+                if (runtimeFilters.type && fieldType !== runtimeFilters.type) {
+                    filterMatch = false;
+                }
+                if (runtimeFilters.grid) {
+                    var isGrid = fieldIsGrid === 'Y' || fieldIsGrid === 'true';
+                    if (runtimeFilters.grid === 'Y' && !isGrid) {
+                        filterMatch = false;
+                    } else if (runtimeFilters.grid === 'N' && isGrid) {
+                        filterMatch = false;
+                    }
+                }
+
+                el.style.display = (searchMatch && filterMatch) ? '' : 'none';
             });
 
             // Show/hide empty categories
             elements.dictContent.querySelectorAll('.jre-dict-category').forEach(function(cat) {
-                var hasVisible = cat.querySelectorAll('.jre-dict-field[style=""], .jre-dict-field:not([style])').length > 0;
-                cat.style.display = hasVisible ? '' : 'none';
+                var visibleFields = cat.querySelectorAll('.jre-dict-field:not([style*="display: none"])');
+                cat.style.display = visibleFields.length > 0 ? '' : 'none';
             });
         }
 
@@ -739,6 +977,19 @@ var JREEditor = (function() {
         var dictPanel = opts.showDictionary ? '\
 <div class="jre-dict-panel">\
     <div class="jre-dict-header">\
+        <div class="jre-filter-row">\
+            <select class="jre-filter-category" title="Filter by category">\
+                <option value="">Category</option>\
+            </select>\
+            <select class="jre-filter-type" title="Filter by type">\
+                <option value="">Type</option>\
+            </select>\
+            <select class="jre-filter-grid" title="Filter by grid">\
+                <option value="">Grid</option>\
+                <option value="Y">Grid Only</option>\
+                <option value="N">Non-Grid</option>\
+            </select>\
+        </div>\
         <input type="text" class="jre-dict-search" placeholder="Search fields...">\
     </div>\
     <div class="jre-dict-content"></div>\

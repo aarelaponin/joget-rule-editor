@@ -353,6 +353,42 @@ table.form-table:has(.jre-editor-container) > tbody > tr > td {
     background: #f0f0f0;
 }
 
+/* Filter row with dropdowns */
+.jre-filter-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.jre-filter-row select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
+    cursor: pointer;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M3 4l3 4 3-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    padding-right: 22px;
+}
+
+.jre-filter-row select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.15);
+}
+
+.jre-filter-row select:hover {
+    border-color: #999;
+}
+
 .jre-dict-search {
     width: 100%;
     padding: 8px 10px;
@@ -548,8 +584,24 @@ table.form-table:has(.jre-editor-container) > tbody > tr > td {
         z-index: 100;
         box-shadow: -2px 0 5px rgba(0,0,0,0.1);
     }
-    
+
     .jre-help-columns {
         flex-direction: column;
+    }
+
+    .jre-filter-row {
+        flex-wrap: wrap;
+    }
+
+    .jre-filter-row select {
+        flex: 1 1 calc(50% - 3px);
+        min-width: calc(50% - 3px);
+    }
+}
+
+@media (max-width: 480px) {
+    .jre-filter-row select {
+        flex: 1 1 100%;
+        min-width: 100%;
     }
 }
